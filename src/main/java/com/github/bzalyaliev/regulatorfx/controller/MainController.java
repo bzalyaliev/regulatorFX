@@ -74,10 +74,9 @@ public class MainController {
                         dataList.add(jsonArray.getDouble(i));
                     }
 
-                    // Определите, сколько последних значений нужно показать
                     int numToShow = 10 + (int) (Math.random() * 3);
 
-                    // Получите подсписок последних значений
+                    // Получаем подсписок последних значений
                     int startIndex = Math.max(0, dataList.size() - numToShow);
                     List<Double> lastValues = dataList.subList(startIndex, dataList.size());
 
@@ -136,70 +135,46 @@ public class MainController {
             }
         };
 
-        // После успешной установки температуры выполняем запрос для получения всех значений температуры
         setTemperatureTask.setOnSucceeded(e -> {
-            // Задача для получения списка значений температуры
-            Task<List<Double>> getAllTemperatureTask = new Task<>() {
-                @Override
-                protected List<Double> call() throws Exception {
-                    String getUrl = "http://localhost:8080/regulator/all";
-                    HttpURLConnection getConnection = (HttpURLConnection) new URL(getUrl).openConnection();
-                    getConnection.setRequestMethod("GET");
-
-                    int getResponseCode = getConnection.getResponseCode();
-                    if (getResponseCode == HttpURLConnection.HTTP_OK) {
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(getConnection.getInputStream()));
-                        String response = reader.readLine();
-                        reader.close();
-                        getConnection.disconnect();
-
-                        JSONArray jsonArray = new JSONArray(response);
-                        List<Double> temperatureList = new ArrayList<>();
-                        for (int i = 0; i < jsonArray.length(); i++) {
-                            temperatureList.add(jsonArray.getDouble(i));
-                        }
-
-                        return temperatureList;
-                    } else {
-                        throw new Exception("Failed to retrieve temperature data from the regulator");
-                    }
-                }
-            };
-
-            // После получения списка значений температуры
-            getAllTemperatureTask.setOnSucceeded(ev -> {
-                List<Double> temperatureList = getAllTemperatureTask.getValue();
-                if (!temperatureList.isEmpty()) {
-                    // Получаем последнее значение температуры
-                    double currentTemperature = temperatureList.get(temperatureList.size() - 1);
-                    temperatureField.setText(String.valueOf(currentTemperature));
-                    // Показываем окно предупреждения, если необходимо
-                    if (currentTemperature > 1000 || currentTemperature < -200) {
-                        showWarningWindow();
-                    }
-                }
-            });
-
-            getAllTemperatureTask.setOnFailed(ev -> {
-                // Обработка ошибки при получении списка значений температуры с сервера
-                System.out.println("Failed to retrieve temperature data from the regulator");
-            });
-            // Запускаем задачу получения списка значений температуры
-            Thread getAllTemperatureThread = new Thread(getAllTemperatureTask);
-            getAllTemperatureThread.start();
+            getCurrentTemperature();
         });
-        // Обработка ошибки при установке температуры на сервере
+
         setTemperatureTask.setOnFailed(e -> {
-            Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle("Error");
-            alert.setHeaderText("Temperature Setting Error");
-            alert.setContentText("An error occurred while setting the temperature.");
-            alert.showAndWait();
+            showErrorAlert("Temperature Setting Error", "An error occurred while setting the temperature.");
         });
-        // Запускаем задачу установки температуры на сервере
+
         Thread thread = new Thread(setTemperatureTask);
         thread.start();
     }
+
+    private void getCurrentTemperature() {
+        try {
+            URL url = new URL("http://localhost:8080/regulator/current");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                String response = reader.readLine();
+                reader.close();
+
+                double currentTemperature = Double.parseDouble(response);
+                temperatureField.setText(String.valueOf(currentTemperature));
+
+                if (currentTemperature > 1000 || currentTemperature < -200) {
+                    showWarningWindow();
+                }
+            } else {
+                showErrorAlert("Error", "Failed to retrieve current temperature.");
+            }
+
+            connection.disconnect();
+        } catch (Exception e) {
+            showErrorAlert("Error", "An error occurred while getting the temperature.");
+        }
+    }
+
 
     private void showWarningWindow() {
         Stage warningStage = new Stage();
@@ -220,6 +195,14 @@ public class MainController {
         delay.play();
 
         warningStage.show();
+    }
+
+    private void showErrorAlert(String title, String content) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(content);
+        alert.showAndWait();
     }
 
 }
